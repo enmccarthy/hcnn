@@ -2,12 +2,18 @@ module Lib where
 
 import qualified Numeric.LinearAlgebra as NL
 import qualified Data.Vector as DV
-import System.Random
-import Data.Functor
+import System.Random 
+import Data.Functor 
+
+data Layer = Input Int
+    | Output Int
+    | Hidden Int 
+-- weight ish
+-- takes in an activation f weights bias and inputs
+weight :: (Float -> Float) -> Vector Float -> Float -> Vector Float
 
 --Loss Functions
 --Mean squared error
--- old minus new divided by amount
 mse :: [Float] -> [Float] -> Float
 mse newy oldy =  ((sum [(i-j) | i <- oldy,
                                j <- newy])/ len)
@@ -49,17 +55,36 @@ zipTheseV :: Float -> Float -> (Float, Float)
 zipTheseV a b = (a , b)
 
 -- activation functions --
-
--- relu
+-- TODO add more
+-- relu (boring)
+relu :: Float -> Float
 relu = max 0
 
+type InputLayers = [Layer] 
+-- I need to keep track of the nodes in the previous layer
+-- There is probably a better way to do this
+type Model = [Int, (DV.Vector Float, [DL.Vector Float])]
+
+type ModelState a = InputLayers -> (a, InputLayers)
 -- our initial weights and bias as well as number of layers
 -- if I extend this to conv then I can change it to a datatype 
 -- and have it be a list of layers
--- init :: [Int] -> [(DV.Vector Float, ML.Matrix Float)]
--- init (x:xs) = 
+-- following deal from class notes
+-- it is possible that I don't need this output
+-- I make the assumption that input comes first and 
+-- output comes last but maybe I want to put a check somewhere
+-- for that 
+
+init :: Model -> InputLayers -> (Model, InputLayers)
+init (num, (b, w)) ((Input numIn):xs) = ((numIn, (b,w)), xs)
+init (num, (b, w)) ((Output Int):xs) = ()
+init (num, (b, w))  ((Hidden Int):xs)
+init' :: InputLayers -> ModelState Model
+init'  = 
 
 -- forward prop
 -- backwards prop
+-- gradient descent
+
 -- batch 
 -- online learning

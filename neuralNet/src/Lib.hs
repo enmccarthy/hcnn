@@ -2,7 +2,8 @@ module Lib where
 
 import qualified Numeric.LinearAlgebra as NL
 import qualified Data.Vector as DV
-    --Activation Func
+import System.Random
+import Data.Functor
 
 --Loss Functions
 --Mean squared error
@@ -38,14 +39,27 @@ softmax x =
     -- return loss
 
 cel :: DV.Vector Float -> DV.Vector Float -> Float
-cel x y = (DV.sum (DV.map (\(pi,yi) -> yi*(log pi)) zip1)) / (fromIntegral len)
+cel x y = (DV.sum (DV.map (\(pi,yi) -> -yi*(log pi)) zip1)) / (fromIntegral len)
     where zip1 = (DV.zipWith zipTheseV (softmax x) y)
-          len    = (length y)
-          
+          len  = (length y)
+
+-- telling how I want them zipped, idk what will happen if they are different size
+-- so if I have issues come back and look at this 
 zipTheseV :: Float -> Float -> (Float, Float)
 zipTheseV a b = (a , b)
 
-type Dimensions = [Int]
-data Layer = Input Dimensions
-    | Output Dimensions
-    | Hidden 
+-- activation functions --
+
+-- relu
+relu = max 0
+
+-- our initial weights and bias as well as number of layers
+-- if I extend this to conv then I can change it to a datatype 
+-- and have it be a list of layers
+-- init :: [Int] -> [(DV.Vector Float, ML.Matrix Float)]
+-- init (x:xs) = 
+
+-- forward prop
+-- backwards prop
+-- batch 
+-- online learning

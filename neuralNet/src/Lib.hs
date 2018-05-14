@@ -3,14 +3,15 @@ module Lib where
 import qualified Numeric.LinearAlgebra as NL
 import qualified Data.Vector as DV
 import System.Random 
-import Data.Functor 
+import Data.Functor
+import Control.Monad 
 
 data Layer = Input Int
     | Output Int
     | Hidden Int 
 -- weight ish
 -- takes in an activation f weights bias and inputs
-weight :: (Float -> Float) -> Vector Float -> Float -> Vector Float
+-- weight :: (Float -> Float) -> Vector Float -> Float -> Vector Float
 
 --Loss Functions
 --Mean squared error
@@ -63,24 +64,46 @@ relu = max 0
 type InputLayers = [Layer] 
 -- I need to keep track of the nodes in the previous layer
 -- There is probably a better way to do this
-type Model = [Int, (DV.Vector Float, [DL.Vector Float])]
+type Model = [(Int, (IO (DV.Vector Float), IO[(DV.Vector Float)]))]
 
 type ModelState a = InputLayers -> (a, InputLayers)
 -- our initial weights and bias as well as number of layers
--- if I extend this to conv then I can change it to a datatype 
--- and have it be a list of layers
+
 -- following deal from class notes
 -- it is possible that I don't need this output
 -- I make the assumption that input comes first and 
 -- output comes last but maybe I want to put a check somewhere
--- for that 
+-- for that
+
+-- takes a standard dev as input 
+-- grabbed from the internet
+-- there are packages that have this implemented but 
+-- I had problems downloading them 
+-- this is boxmuller
+gauss :: Float -> IO Float
+gauss scale = do
+    x1 <- randomIO
+    x2 <- randomIO
+    return $ scale * sqrt (-2 * log x1) * cos (2 * pi * x2)
 
 init :: Model -> InputLayers -> (Model, InputLayers)
-init (num, (b, w)) ((Input numIn):xs) = ((numIn, (b,w)), xs)
-init (num, (b, w)) ((Output Int):xs) = ()
-init (num, (b, w))  ((Hidden Int):xs)
-init' :: InputLayers -> ModelState Model
-init'  = 
+init wholemod@((num, (b, w)):ms) (ls:lay) = case ls of
+                (Input numIn) -> ([(numIn, (b,w))], lay)
+                (Output numOut) -> (([(numOut, ((createB numOut), (createW num numOut)))] ++ wholemod), []) -- create the bias and weights for output layer 
+                (Hidden numHid) -> (([(numHid, ((createB numHid), (createW num numHid)))] ++ wholemod), lay)
+-- init (num, (b, w)) ((Input numIn):xs) = ((numIn, (b,w)), xs)
+-- init (num, (b, w)) ((Output numOut):xs) = ((numOut, ((createB numOut), (createW num numOut))), []) -- create the bias and weights for output layer
+-- init (num, (b, w))  ((Hidden numHid):xs) = ((numHid, ((createB numHid), (createW num numHid))), xs)
+--possibly a more efficient way than fromList
+createB :: Int -> IO(DV.Vector Float)
+createB num = do
+            listRan <- (replicateM num (gauss (0.01)))
+            return (DV.fromList listRan)
+createW :: Int -> Int -> IO[(DV.Vector Float)]
+createW num num2 = (replicateM num (createB num2))
+
+-- init' :: InputLayers -> ModelState Model
+-- init'  = 
 
 -- forward prop
 -- backwards prop

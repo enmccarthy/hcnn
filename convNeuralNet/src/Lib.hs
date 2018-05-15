@@ -86,19 +86,8 @@ ranRan4 x y z q = let her = (ranRan3 y z q)
 -- weights / bias
 -- input --output
 -- user needs to specify dimensions or does a CNN not need that
-type Dimensions = [Int]
-data Layer = Input Dimensions
-    | Output Dimensions
+
  
 
 -- do I need a data type for weights/bias or just matrix 
 
---Mean squared error
--- old minus new divided by amount
-mse :: [Double] -> [Double] -> Double
-mse newy oldy =  ((sum [(i-j) | i <- oldy,
-                               j <- newy])/ len)
-    where len = fromIntegral(length newy)
---
---cross entropy loss
--- cel :: 

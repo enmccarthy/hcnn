@@ -66,11 +66,9 @@ type InputLayers = [Layer]
 -- There is probably a better way to do this
 type Model = [(Int, (IO (DV.Vector Float), IO[(DV.Vector Float)]))]
 
-type ModelState a = InputLayers -> (a, InputLayers)
 -- our initial weights and bias as well as number of layers
 
--- following deal from class notes
--- it is possible that I don't need this output
+
 -- I make the assumption that input comes first and 
 -- output comes last but maybe I want to put a check somewhere
 -- for that
@@ -89,11 +87,9 @@ gauss scale = do
 initM :: Model -> InputLayers -> (Model, InputLayers)
 initM wholemod@((num, (b, w)):ms) (ls:lay) = case ls of
                 (Input numIn) -> ([(numIn, (b,w))], lay)
-                (Output numOut) -> (([(numOut, ((createB numOut), (createW num numOut)))] ++ wholemod), []) -- create the bias and weights for output layer 
+                (Output numOut) -> ((reverse ([(numOut, ((createB numOut), (createW num numOut)))] ++ wholemod)), []) -- create the bias and weights for output layer 
                 (Hidden numHid) -> (([(numHid, ((createB numHid), (createW num numHid)))] ++ wholemod), lay)
--- init (num, (b, w)) ((Input numIn):xs) = ((numIn, (b,w)), xs)
--- init (num, (b, w)) ((Output numOut):xs) = ((numOut, ((createB numOut), (createW num numOut))), []) -- create the bias and weights for output layer
--- init (num, (b, w))  ((Hidden numHid):xs) = ((numHid, ((createB numHid), (createW num numHid))), xs)
+
 --possibly a more efficient way than fromList
 createB :: Int -> IO(DV.Vector Float)
 createB num = do
@@ -102,10 +98,13 @@ createB num = do
 createW :: Int -> Int -> IO[(DV.Vector Float)]
 createW num num2 = (replicateM num (createB num2))
 
-initM' :: Model -> ModelState Model
-initM' = initM
 
 -- forward prop
+-- input the model
+-- matrix multiplication summation and activations function
+forwardprop :: Model -> (Dv.Vector Float) -> (DV.Vector Float)
+forwardprop ((_, (b, w)):ms) vec =   
+
 -- backwards prop
 -- gradient descent
 

@@ -86,8 +86,8 @@ gauss scale = do
     x2 <- randomIO
     return $ scale * sqrt (-2 * log x1) * cos (2 * pi * x2)
 
-init :: Model -> InputLayers -> (Model, InputLayers)
-init wholemod@((num, (b, w)):ms) (ls:lay) = case ls of
+initM :: Model -> InputLayers -> (Model, InputLayers)
+initM wholemod@((num, (b, w)):ms) (ls:lay) = case ls of
                 (Input numIn) -> ([(numIn, (b,w))], lay)
                 (Output numOut) -> (([(numOut, ((createB numOut), (createW num numOut)))] ++ wholemod), []) -- create the bias and weights for output layer 
                 (Hidden numHid) -> (([(numHid, ((createB numHid), (createW num numHid)))] ++ wholemod), lay)
@@ -102,8 +102,8 @@ createB num = do
 createW :: Int -> Int -> IO[(DV.Vector Float)]
 createW num num2 = (replicateM num (createB num2))
 
--- init' :: InputLayers -> ModelState Model
--- init'  = 
+initM' :: Model -> ModelState Model
+initM' = initM
 
 -- forward prop
 -- backwards prop

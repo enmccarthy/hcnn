@@ -107,7 +107,7 @@ createWHelp num = do
 createW :: Int -> Int -> IO[(DV.Vector Float)]
 createW num num2 = (replicateM num (createWHelp num2))
 
-
+-- do you use activation on the last layer (??) I think I need to modify this
 -- forward prop
 forwardprop :: Model -> (DV.Vector Float) -> IO (DV.Vector Float)
 forwardprop [] vec = return vec

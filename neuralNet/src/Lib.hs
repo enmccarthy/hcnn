@@ -66,6 +66,8 @@ type InputLayers = [Layer]
 -- There is probably a better way to do this
 type Model = [(Int, (IO Float, IO[(DV.Vector Float)]))]
 
+type Error = [((DV.Vector Float), (DV.Vector Float))]
+
 -- our initial weights and bias as well as number of layers
 
 
@@ -108,18 +110,31 @@ createW :: Int -> Int -> IO[(DV.Vector Float)]
 createW num num2 = (replicateM num (createWHelp num2))
 
 -- do you use activation on the last layer (??) I think I need to modify this
+-- last one maybe uses softmax
 -- forward prop
-forwardprop :: Model -> (DV.Vector Float) -> IO (DV.Vector Float)
-forwardprop [] vec = return vec
-forwardprop ((_, (b, w)):ms) vec = do
-                                  weight <- w
-                                  bias <- b
-                                  (forwardprop ms (DV.fromList
-                                                  (map relu
-                                                  (map (+ bias)
-                                                  (map (DV.foldl1 (+))
-                                                  (map (DV.zipWith zipTheseProp vec)
-                                                        weight))))))
+forwardprop :: Model -> ((DV.Vector Float), Error) -> IO((DV.Vector Float), Error)
+forwardprop [] (vec, err) = return (vec, err)
+forwardprop ((_, (b, w)):[]) (vec, err) = do
+    weight <- w
+    bias <- b
+    let output = (softmax 
+                    (DV.fromList
+                    (map (+ bias)
+                    (map (DV.foldl1 (+))
+                    (map (DV.zipWith zipTheseProp vec)
+                    weight)))))
+    return (output, ([(vec, output)] ++ err))
+
+forwardprop ((_, (b, w)):ms) (vec, err) = do
+    weight <- w
+    bias <- b
+    let output = (DV.fromList
+                    (map relu
+                    (map (+ bias)
+                    (map (DV.foldl1 (+))
+                    (map (DV.zipWith zipTheseProp vec)
+                        weight)))))
+    (forwardprop ms (output, ((vec, output):err)))
 
 
 zipTheseProp :: Float -> Float -> Float
@@ -127,8 +142,64 @@ zipTheseProp a b = (a * b)
 
 
 -- backwards prop
+--the derivative of cross entropy 
+-- takes in the y vector and the output vector
+derCE :: (DV.Vector Float) -> (DV.Vector Float) -> (DV.Vector Float)
+derCE yvec outvec = (DV.zipWith zipAdd (DV.map (subtract 1) (DV.zipWith zipTheseProp yvec outvec))
+                                        (DV.zipWith zipTheseProp (DV.map (\x -> 1.0 - x) yvec)
+                                                                    (DV.map (1.0/) (DV.map (\x -> 1.0 - x) outvec))))
 
--- gradient descent
+zipAdd :: Float -> Float -> Float
+zipAdd a b = (a + b)
 
--- batch
--- online learning
+-- dervative of each output with respect to their input 
+-- takes in the input to the output nodes
+derOut :: (DV.Vector Float) -> (DV.Vector Float)
+derOut inp = (DV.map (/(inpSum^2))(DV.map (\x ->(exp x) *(inpSum - (exp x))) inp))
+    where inpSum = (DV.sum (DV.map exp inp))
+
+-- takes relu values
+derRelu :: (DV.Vector Float) -> (DV.Vector Float) 
+derRelu inp = (DV.map (\x -> if (x > 0) then 1 else 0) inp)
+
+
+-- last layer to output-- 
+-- derCE * derOut * layer before outvalue
+
+
+-- backwards prop
+-- TAKES A REVERSE MODEL/ERROR
+-- takes the y of the output of the model and the expected y 
+backwardsprop :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> Error -> Model 
+backwardsprop ((i, (b, w):ms) out expout ((beforeSM, afterSM):(beforeWeights, afterWeights):re) = do
+    weight <- w
+    bias <- b
+    let dce = (derCE expout out)
+    let dout = (derOut afterWeights)
+
+    let changeWeight = (DV.map (* 0.10) (DV.zipWith zipTheseProp2 dce dout beforeWeights))
+    let newWeight = (map (DV.zipWith zipTheseSub changeWeight) weight)
+    -- new output layer weights
+    [((i, (bias, newWeight))] ++ (backprophelp ms dce dout weight ((beforeWeights, afterWeights):re)))
+
+
+-- layer to layer
+-- derRelu * h1 outvalue * (derCE * derOut * (weights on 2nd layer output))
+
+--input to layer
+--derRelu * input value out * (previous relu * previous 3rd value * weight coming into layer)
+
+
+backprophelp ((i, (b, w):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
+    currWeight <- w 
+    let dRelu = (derRelu h2input)
+    let mult = DV.zipWith zipThereProp (DV.zipWith zipThereProp2 derRelu h1output d1) d2)
+    let weightChange = (map (DV.zipWith zipThereProp mult) weigh)
+    let newWeight = (DV.map (* 0.10) (DV.zipWith zipTheseSub weightChange currWeight)) 
+    [((i, (b, newWeight))] ++ (backprophelp  
+
+zipTheseProp2 :: Float -> Float -> Float -> Float
+zipTheseProp2 a b c= (a * b * c)
+
+zipTheseSub :: Float -> Float -> Float 
+zipTheseSub a b = (b - a)

@@ -166,15 +166,16 @@ derRelu inp = (DV.map (\x -> if (x > 0) then 1 else 0) inp)
 -- backwards prop
 -- TAKES A REVERSE MODEL/ERROR
 -- takes the y of the output of the model and the expected y 
-backwardsprop :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> Error -> Model 
+backwardsprop :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> Error -> IO Model 
 backwardsprop ((i, (b, w)):ms) out expout ((beforeSM, afterSM):(beforeWeights, afterWeights):re) = do
-    weight <- w
-    let dce = (derCE expout out) --(vector)
-    let dout = (derOut afterWeights) --(vector)
-    let changeWeight = (DV.map (* 0.10) (DV.zipWith3 zipMult2 dce dout beforeWeights)) 
-    let newWeight = return (map (DV.zipWith zipSub changeWeight) weight)
-    -- new output layer weights
-    [(i, (b, newWeight))] ++ (backprophelp ms dce dout weight ((beforeWeights, afterWeights):re))
+        weight <- w
+        let dce = (derCE expout out) --(vector)
+        let dout = (derOut afterWeights) --(vector)
+        let changeWeight = (DV.map (* 0.10) (DV.zipWith3 zipMult2 dce dout beforeWeights)) 
+        let newWeight = return (map (DV.zipWith zipSub changeWeight) weight)
+        otherMod <- (backprophelp ms dce dout weight ((beforeWeights, afterWeights):re))
+        -- new output layer weights
+        return ([(i, (b, newWeight))] ++ otherMod)
 
 -- layer to layer
 -- derRelu * h1 outvalue * (derCE * derOut * (weights on 2nd layer output))
@@ -182,42 +183,44 @@ backwardsprop ((i, (b, w)):ms) out expout ((beforeSM, afterSM):(beforeWeights, a
 --input to layer
 --derRelu * input value out * (previous relu * previous 3rd value * weight coming into layer)
 
-backprophelp :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> [(DV.Vector Float)] -> Error -> Model
-backprophelp ((i, (b, w)):ws) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
+backprophelp :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> [(DV.Vector Float)] -> Error -> IO Model
+backprophelp ((i, (b, w)):[]) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
+        currWeight <- w 
+        let dRelu = (derRelu h2input) --vector
+        let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh) --[vector]
+        let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue)) 
+        let newWeight = (zipWith zipVecSub weightChange currWeight) 
+        return [(i, (b, w))]
+
+backprophelp ((i, (b, w)):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
     currWeight <- w 
-    let dRelu = (derRelu h2input) --vector
-    let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh) --[vector]
-    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue)) 
-    --let newWeight = (zipWith zipVecSub weightChange currWeight) 
-    [(i, (b, w))]
-
--- backprophelp ((i, (b, w)):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
---     currWeight <- w 
---     let dRelu = (derRelu h2input)
---     let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh)
---     let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
---     let newWeight = return (zipWith zipVecSub weightChange currWeight) 
---     [(i, (b, newWeight))] ++ (backprophelp1 ms dRelu thirdValue currWeight ((h1input, h1output):re))
+    let dRelu = (derRelu h2input)
+    let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh)
+    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
+    let newWeight = return (zipWith zipVecSub weightChange currWeight) 
+    otherMod <- (backprophelp1 ms dRelu thirdValue currWeight ((h1input, h1output):re))
+    return ([(i, (b, newWeight))] ++ otherMod)
 
 
--- --backprophelp1 :: Model -> (DV.Vector Float) -> [(DV.Vector Float)] -> [(DV.Vector Float)] -> Error -> Model
--- backprophelp1 ((i, (b, w)):[]) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
---     currWeight <- w 
---     let dRelu = (derRelu h2input)
---     let maper = (map (DV.zipWith zipMult d1) d2)
---     let thirdValue = (zipWith zipVec maper weigh)
---     let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
---     let newWeight = return (zipWith zipVecSub weightChange currWeight)
---     [(i, (b, newWeight))]
+backprophelp1 :: Model -> (DV.Vector Float) -> [(DV.Vector Float)] -> [(DV.Vector Float)] -> Error -> IO Model
+backprophelp1 ((i, (b, w)):[]) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
+    currWeight <- w 
+    let dRelu = (derRelu h2input)
+    let maper = (map (DV.zipWith zipMult d1) d2)
+    let thirdValue = (zipWith zipVec maper weigh)
+    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
+    let newWeight = return (zipWith zipVecSub weightChange currWeight)
+    return [(i, (b, newWeight))]
     
--- backprophelp1 ((i, (b, w)):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
---     currWeight <- w 
---     let dRelu = (derRelu h2input)
---     let maper = (map (DV.zipWith zipMult d1) d2)
---     let thirdValue = (zipWith zipVec maper weigh)
---     let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
---     let newWeight = return (zipWith zipVecSub weightChange currWeight)
---     ([(i, (b, newWeight))] ++ (backprophelp1 ms dRelu thirdValue currWeight ((h1input, h1output):re)))
+backprophelp1 ((i, (b, w)):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
+    currWeight <- w 
+    let dRelu = (derRelu h2input)
+    let maper = (map (DV.zipWith zipMult d1) d2)
+    let thirdValue = (zipWith zipVec maper weigh)
+    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
+    let newWeight = return (zipWith zipVecSub weightChange currWeight)
+    otherMod <- (backprophelp1 ms dRelu thirdValue currWeight ((h1input, h1output):re))
+    return ([(i, (b, newWeight))] ++ otherMod)
 
 --look to see where this is used and change it
 zipVec :: (DV.Vector Float) -> (DV.Vector Float) ->  DV.Vector Float

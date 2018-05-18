@@ -6,12 +6,10 @@ import System.Random
 import Data.Functor
 import Control.Monad
 
+
 data Layer = Input Int
     | Output Int
     | Hidden Int
--- weight ish
--- takes in an activation f weights bias and inputs
--- weight :: (Float -> Float) -> Vector Float -> Float -> Vector Float
 
 --Loss Functions
 --Mean squared error
@@ -22,10 +20,7 @@ mse newy oldy =  ((sum [(i-j) | i <- oldy,
 
 -- following https://deepnotes.io/softmax-crossentropy
 --softmax
--- python code for it:
--- def softmax(X):
---     exps = np.exp(X-np.max(X))
---     return exps / np.sum(exps)
+
 softmax :: (DV.Vector Float) -> (DV.Vector Float)
 softmax x =
     (DV.map (/(DV.sum toX)) toX)
@@ -37,13 +32,6 @@ softmax x =
 -- python code:
 -- X is the output from fully connected layer (num_examples x num_classes)
 -- y is labels (num_examples x 1)
-
--- def cross_entropy(X,y):
-    -- m = y.shape[0]
-    -- p = softmax(X)
-    -- log_likelihood = -np.log(p[range(m),y])
-    -- loss = np.sum(log_likelihood) / m
-    -- return loss
 
 cel :: DV.Vector Float -> DV.Vector Float -> Float
 cel x y = (DV.sum (DV.map (\(pi,yi) -> -yi*(log pi)) zip1)) / (fromIntegral len)
@@ -73,8 +61,6 @@ type Error = [((DV.Vector Float), (DV.Vector Float))]
 
 -- takes a standard dev as input
 -- grabbed from the internet
--- there are packages that have this implemented but
--- I had problems downloading them
 -- this is boxmuller
 gauss :: Float -> IO Float
 gauss scale = do
@@ -86,13 +72,11 @@ initModel :: Model -> InputLayers -> (Model, InputLayers)
 initModel wholemod@((num, (b, w)):ms) (ls:lay) = case ls of
                 (Input numIn) -> ([(numIn, (b,w))], lay)
                 (Output numOut) -> ((reverse
-                                      ([(numOut,
-                                        ((gauss (0.01)), (createW num numOut)))]
-                                            ++ wholemod))
+                                      ((numOut,
+                                        ((gauss (0.01)), (createW num numOut))):wholemod))
                                               , []) -- create the bias and weights for output layer
-                (Hidden numHid) -> (([(numHid,
-                                      ((gauss (0.01)), (createW num numHid)))]
-                                          ++ wholemod)
+                (Hidden numHid) -> (((numHid,
+                                      ((gauss (0.01)), (createW num numHid))):wholemod)
                                             , lay)
 
 -- possibly a more efficient way to do this--
@@ -108,6 +92,7 @@ createWHelp num = do
 
 
 -- forward prop
+--TODO set this up so it skips input layer
 forwardprop :: Model -> ((DV.Vector Float), Error) -> IO((DV.Vector Float), Error)
 forwardprop [] (vec, err) = return (vec, err)
 forwardprop ((_, (b, w)):[]) (vec, err) = do
@@ -167,13 +152,13 @@ derRelu inp = (DV.map (\x -> if (x > 0) then 1 else 0) inp)
 -- TAKES A REVERSE MODEL/ERROR
 -- takes the y of the output of the model and the expected y 
 backwardsprop :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> Error -> IO Model 
-backwardsprop ((i, (b, w)):ms) out expout ((beforeSM, afterSM):(beforeWeights, afterWeights):re) = do
+backwardsprop ((i, (b, w)):ms) out expout err@((beforeSM, afterSM):(beforeWeights, afterWeights):re) = do
         weight <- w
         let dce = (derCE expout out) --(vector)
         let dout = (derOut afterWeights) --(vector)
         let changeWeight = (DV.map (* 0.10) (DV.zipWith3 zipMult2 dce dout beforeWeights)) 
         let newWeight = return (map (DV.zipWith zipSub changeWeight) weight)
-        otherMod <- (backprophelp ms dce dout weight ((beforeWeights, afterWeights):re))
+        otherMod <- (backprophelp ms dce dout weight err)
         -- new output layer weights
         return ([(i, (b, newWeight))] ++ otherMod)
 
@@ -185,30 +170,33 @@ backwardsprop ((i, (b, w)):ms) out expout ((beforeSM, afterSM):(beforeWeights, a
 
 backprophelp :: Model -> (DV.Vector Float) -> (DV.Vector Float) -> [(DV.Vector Float)] -> Error -> IO Model
 backprophelp ((i, (b, w)):[]) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
-        currWeight <- w 
-        let dRelu = (derRelu h2input) --vector
-        let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh) --[vector]
-        let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue)) 
-        let newWeight = (zipWith zipVecSub weightChange currWeight) 
-        return [(i, (b, w))]
-
+    currWeight <- w 
+    let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh) --[vector]
+    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 (derRelu h2input) h1output) thirdValue)) 
+    let newWeight = return (zipWith zipVecSub weightChange currWeight) 
+    return [(i, (b, newWeight))]
+    
 backprophelp ((i, (b, w)):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
     currWeight <- w 
-    let dRelu = (derRelu h2input)
     let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh)
-    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
+    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 (derRelu h2input) h1output) thirdValue))
     let newWeight = return (zipWith zipVecSub weightChange currWeight) 
-    otherMod <- (backprophelp1 ms dRelu thirdValue currWeight ((h1input, h1output):re))
+    otherMod <- (backprophelp1 ms (derRelu h2input) thirdValue currWeight ((h1input, h1output):re))
     return ([(i, (b, newWeight))] ++ otherMod)
 
 
 backprophelp1 :: Model -> (DV.Vector Float) -> [(DV.Vector Float)] -> [(DV.Vector Float)] -> Error -> IO Model
-backprophelp1 ((i, (b, w)):[]) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
+backprophelp1 [] d1 d2 weigh _ = do
+    return []
+    
+backprophelp1 ((i, (b, w)):[]) d1 d2 weigh _ = do
+    return [(i, (b, w))]
+
+backprophelp1 ((i, (b, w)):(i1, (b1, w1)):[]) d1 d2 weigh ((h2input, h2output):(h1input, h1output):re) = do
     currWeight <- w 
-    let dRelu = (derRelu h2input)
     let maper = (map (DV.zipWith zipMult d1) d2)
     let thirdValue = (zipWith zipVec maper weigh)
-    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 dRelu h1output) thirdValue))
+    let weightChange = (map (DV.map (* 0.10)) (map (DV.zipWith3 zipMult2 (derRelu h2input) h1output) thirdValue))
     let newWeight = return (zipWith zipVecSub weightChange currWeight)
     return [(i, (b, newWeight))]
     
@@ -223,9 +211,10 @@ backprophelp1 ((i, (b, w)):ms) d1 d2 weigh ((h2input, h2output):(h1input, h1outp
     return ([(i, (b, newWeight))] ++ otherMod)
 
 --look to see where this is used and change it
-zipVec :: (DV.Vector Float) -> (DV.Vector Float) ->  DV.Vector Float
+zipVec :: (DV.Vector Float) -> (DV.Vector Float) -> (DV.Vector Float)
 zipVec a b = DV.zipWith zipMult a b
-    
+
+zipVecSub :: (DV.Vector Float) -> (DV.Vector Float) -> (DV.Vector Float)
 zipVecSub a b = DV.zipWith zipSub a b
 
 zipMult2 :: Float -> Float -> Float -> Float

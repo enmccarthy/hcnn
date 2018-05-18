@@ -1,6 +1,0 @@
-flags: {}
-packages:
-- .
-extra-deps:
-- bed-and-breakfast-0.1.2
-resolver: nightly-2017-11-10

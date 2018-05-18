@@ -24,7 +24,8 @@ dependencies:
 - hmatrix
 - vector
 - random
-
+- zlib
+- bytestring
 
 library:
   source-dirs: src

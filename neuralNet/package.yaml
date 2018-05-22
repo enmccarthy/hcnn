@@ -26,6 +26,8 @@ dependencies:
 - random
 - zlib
 - bytestring
+- hspec
+
 
 library:
   source-dirs: src

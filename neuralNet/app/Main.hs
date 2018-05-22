@@ -27,8 +27,8 @@ train 1 model trainI trainL = do
     let ans = getY trainL n
     let vectorAns = (DV.fromList ans)
     (vec, err) <- (forwardprop model (vectorExample, []))
-    newMod <- (backwardsprop model vec vectorAns err)
-    return newMod
+    newMod <- (backwardsprop (reverse model) vec vectorAns (reverse err))
+    return (reverse newMod)
 train iter model trainI trainL = do
     n <- (`mod` 10000) <$> randomIO
     let example = getX trainI n
@@ -36,8 +36,8 @@ train iter model trainI trainL = do
     let ans = getY trainL n
     let vectorAns = (DV.fromList ans)
     (vec, err) <- (forwardprop model (vectorExample, []))
-    newMod <- (backwardsprop model vec vectorAns err)
-    train (iter-1) newMod trainI trainL
+    newMod <- (backwardsprop (reverse model) vec vectorAns (reverse err))
+    train (iter-1) (reverse newMod) trainI trainL
 
 main :: IO ()
 main = do
@@ -48,17 +48,18 @@ main = do
         ,  "./src/t10k-labels-idx1-ubyte.gz"
         ]
 
-    let (m:model) = (createMod [(Input 784), (Hidden 15), (Output 10)] [(0, ((return 0.01), (return [])))])
+    let (m:model) = (createMod [(Input 784), (Hidden 5), (Output 10)] [(0, ((return 0.01), (return [])))])
 
-    trainedMod <- (train 1000 model trainI trainL)
-    let example = getX trainI 1
+    trainedMod <- (train 10 model trainI trainL)
+    let example = getX trainI 2
     let vectorExample = (DV.fromList example)
-    let ans = getY trainL 1
+    let ans = getY trainL 2
     let vectorAns = (DV.fromList ans)
     (vector2, err) <- (forwardprop model (vectorExample, []))
     (vector, err) <- (forwardprop trainedMod (vectorExample, []))
-    -- (print vector)
     (print vector2)
-    -- (print (cel vector vectorAns))
+    (print vector)
+    -- (print err)
+    (print (cel [vector] vectorAns))
     (print vectorAns)
     return ()

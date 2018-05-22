@@ -33,14 +33,14 @@ softmax x =
 -- X is the output from fully connected layer (num_examples x num_classes)
 -- y is labels (num_examples x 1)
 
-cel :: DV.Vector Float -> [DV.Vector Float] -> [Float]
+cel :: [DV.Vector Float] -> DV.Vector Float -> [Float]
 cel x y = map (\(a,b) -> a/ b )
   (zipWith zipIntTuple
     (map (DV.sum)
-      (map (DV.map (\(pi,yi) -> -yi*(log pi))) zip1))
+      (map (DV.map (\(yi,xi) -> -yi*(log xi))) zip1))
     len)
-    where zip1 = (map (DV.zipWith zipFloatTuple (softmax x)) y)
-          len  = (map (DV.length) y)
+    where zip1 = (map (DV.zipWith zipFloatTuple y) (map softmax x))
+          len  = (map (DV.length) x)
 
 -- telling how I want them zipped, idk what will happen if they are different size
 -- so if I have issues come back and look at this
@@ -160,6 +160,7 @@ derRelu inp = (DV.map (\x -> if (x > 0) then 1 else 0) inp)
 -- backwards prop
 -- TAKES A REVERSE MODEL/ERROR
 -- takes the y of the output of the model and the expected y
+-- TODO: I think the errors are in the wrong order
 backwardsprop :: Model -> (DV.Vector Float)
                           -> (DV.Vector Float) -> Error -> IO Model
 backwardsprop ((i, (b, w)):ms) out
@@ -172,7 +173,7 @@ backwardsprop ((i, (b, w)):ms) out
       let newWeight = return (map (DV.zipWith zipSub changeWeight) weight)
       otherMod <- (backprophelp ms dce dout weight err)
       -- new output layer weights
-      return ([(i, (b, newWeight))] ++ otherMod)
+      return ((i, (b, newWeight)):otherMod)
 
 -- layer to layer
 -- derRelu * h1 outvalue * (derCE * derOut * (weights on 2nd layer output))
@@ -181,7 +182,8 @@ backwardsprop ((i, (b, w)):ms) out
 --derRelu * input value out * (previous relu * previous 3rd value * weight coming into layer)
 
 -- TODO: a lot of this is repetitive, pull it out and create a helper
--- this is also good for testing
+-- this is also good for testing, right now it is this way because of
+-- dealing with the I/O
 
 backprophelp :: Model -> (DV.Vector Float) -> (DV.Vector Float)
                     -> [(DV.Vector Float)] -> Error -> IO Model

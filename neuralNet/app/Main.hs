@@ -20,7 +20,7 @@ getX     s n = (/ 256) <$> getImage s n
 getLabel s n = fromIntegral $ BS.index s (n + 8)
 getY     s n = fromIntegral . fromEnum . (getLabel s n ==) <$> [0..9]
 
-train 1 model trainI trainL = do 
+train 1 model trainI trainL = do
     n <- (`mod` 10000) <$> randomIO
     let example = getX trainI n
     let vectorExample = (DV.fromList example)
@@ -29,7 +29,7 @@ train 1 model trainI trainL = do
     (vec, err) <- (forwardprop model (vectorExample, []))
     newMod <- (backwardsprop model vec vectorAns err)
     return newMod
-train iter model trainI trainL = do 
+train iter model trainI trainL = do
     n <- (`mod` 10000) <$> randomIO
     let example = getX trainI n
     let vectorExample = (DV.fromList example)
@@ -54,8 +54,8 @@ main = do
     let vectorExample = (DV.fromList example)
     let ans = getY trainL 1
     let vectorAns = (DV.fromList ans)
-    (vector, err) <- (forwardprop model (vectorExample, []))
-    (print vector) 
-    (print (cel vector vectorAns))
+    (vector, err) <- (forwardprop trainedMod (vectorExample, []))
+    (print vector)
+    -- (print (cel vector vectorAns))
     (print vectorAns)
     return ()

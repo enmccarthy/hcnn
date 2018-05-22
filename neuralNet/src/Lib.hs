@@ -32,7 +32,8 @@ softmax x =
 -- python code:
 -- X is the output from fully connected layer (num_examples x num_classes)
 -- y is labels (num_examples x 1)
-
+--CHECK THIS becuase I think I have confused myself with x/y and where softmax
+-- should be applied, I actually think on y now
 cel :: [DV.Vector Float] -> DV.Vector Float -> [Float]
 cel x y = map (\(a,b) -> a/ b )
   (zipWith zipIntTuple
@@ -106,11 +107,11 @@ forwardprop [] (vec, err) = return (vec, err)
 forwardprop ((_, (b, w)):[]) (vec, err) = do
     weight <- w
     bias <- b
-    let output = (DV.fromList
+    let output = (softmax (DV.fromList
                     (map (+ bias)
                     (map (DV.foldl1 (+))
                     (map (DV.zipWith zipMult vec)
-                    weight))))
+                    weight)))))
     return (output, ([(vec, output)] ++ err))
 
 forwardprop ((_, (b, w)):ms) (vec, err) = do

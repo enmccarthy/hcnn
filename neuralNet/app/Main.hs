@@ -50,7 +50,7 @@ main = do
 
     let (m:model) = (createMod [(Input 784), (Hidden 5), (Output 10)] [(0, ((return 0.01), (return [])))])
 
-    trainedMod <- (train 10 model trainI trainL)
+    trainedMod <- (train 1000 model trainI trainL)
     let example = getX trainI 2
     let vectorExample = (DV.fromList example)
     let ans = getY trainL 2

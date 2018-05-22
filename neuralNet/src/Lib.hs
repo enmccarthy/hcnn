@@ -14,8 +14,8 @@ data Layer = Input Int
 --Loss Functions
 --Mean squared error
 mse :: [Float] -> [Float] -> Float
-mse newy oldy =  ((sum [(i-j) | i <- oldy,
-                               j <- newy])/ len)
+mse newy oldy =  (((sum [(i-j) | i <- oldy,
+                               j <- newy])**2)/ len)
     where len = fromIntegral(length newy)
 
 -- following https://deepnotes.io/softmax-crossentropy
@@ -33,16 +33,20 @@ softmax x =
 -- X is the output from fully connected layer (num_examples x num_classes)
 -- y is labels (num_examples x 1)
 
-cel :: DV.Vector Float -> DV.Vector Float -> Float
-cel x y = (DV.sum (DV.map (\(pi,yi) -> -yi*(log pi)) zip1)) / (fromIntegral len)
-    where zip1 = (DV.zipWith zipFloatTuple (softmax x) y)
-          len  = (length y)
+-- I think this should be a list of vectors
+-- so [label, label, label] [[pred, pred, pred], [pred, pred, pred]] [err, err, err]
+cel :: DV.Vector Float -> [DV.Vector Float] -> [Float]
+cel x y = map (\(a,b) -> a/(fromIntegral b)) (zipIntTuple (map (DV.sum) (map (DV.map (\(pi,yi) -> -yi*(log pi))) zip1)) len)
+    where zip1 = (map (DV.zipWith zipFloatTuple (softmax x)) y)
+          len  = (map (fromIntegral) (map length y))
 
 -- telling how I want them zipped, idk what will happen if they are different size
 -- so if I have issues come back and look at this
 zipFloatTuple :: Float -> Float -> (Float, Float)
 zipFloatTuple a b = (a , b)
 
+zipIntTuple :: Float -> Int -> (Float, Float)
+zipIntTuple a b = (a , b)
 -- activation functions --
 -- relu (boring)
 relu :: Float -> Float

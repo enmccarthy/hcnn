@@ -15,3 +15,4 @@ main = hspec $ do
         it "softmax calculation compared to scikitlearn" $
             softmax (DV.fromList [1.0,2.9,3.0]) `shouldBe`
               (DV.fromList [0.0663352,  0.4435102,  0.49015456])
+    

@@ -42,20 +42,23 @@ train iter model trainI trainL = do
 main :: IO ()
 main = do
     -- these came from https://crypto.stanford.edu/~blynn/haskell/brain.html
-    [trainI, trainL, testI, testL] <- mapM ((decompress  <$>) . BS.readFile) [ "/mnt/c/Users/merin/Desktop/hcnn/neuralNet/src/train-images-idx3-ubyte.gz"
-        , "/mnt/c/Users/merin/Desktop/hcnn/neuralNet/src/train-labels-idx1-ubyte.gz"
-        ,  "/mnt/c/Users/merin/Desktop/hcnn/neuralNet/src/t10k-images-idx3-ubyte.gz"
-        ,  "/mnt/c/Users/merin/Desktop/hcnn/neuralNet/src/t10k-labels-idx1-ubyte.gz"
+    [trainI, trainL, testI, testL] <- mapM ((decompress  <$>) . BS.readFile) [ "./src/train-images-idx3-ubyte.gz"
+        , "./src/train-labels-idx1-ubyte.gz"
+        ,  "./src/t10k-images-idx3-ubyte.gz"
+        ,  "./src/t10k-labels-idx1-ubyte.gz"
         ]
 
-    let (m:model) = (createMod [(Input 784), (Hidden 10), (Output 10)] [(0, ((return 0.01), (return [])))])
+    let (m:model) = (createMod [(Input 784), (Hidden 15), (Output 10)] [(0, ((return 0.01), (return [])))])
+
     trainedMod <- (train 1000 model trainI trainL)
     let example = getX trainI 1
     let vectorExample = (DV.fromList example)
     let ans = getY trainL 1
     let vectorAns = (DV.fromList ans)
+    (vector2, err) <- (forwardprop model (vectorExample, []))
     (vector, err) <- (forwardprop trainedMod (vectorExample, []))
-    (print vector)
+    -- (print vector)
+    (print vector2)
     -- (print (cel vector vectorAns))
     (print vectorAns)
     return ()

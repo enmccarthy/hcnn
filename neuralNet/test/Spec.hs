@@ -1,6 +1,4 @@
-import Test.HUnit
+import Test.Hspec
 
 main :: IO ()
-main = do
-    (assertEqual "hello" 1 1)
-    (assertEqual "bye" 1 2)
+main = return()

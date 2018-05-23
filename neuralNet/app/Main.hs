@@ -47,7 +47,7 @@ main = do
 
     let (m:model) = (createMod [(Input 784), (Hidden 200), (Output 10)] [(0, ((return 0.01), (return [])))])
     -- let testmod = [(2, (1.0), return [[4.0, 3.0], [4.0, 3.0]])), (2, ((return 1.0), return [[2.0, 3.0], [2.0, 3.0]]))]
-    trainedMod <- (train 100 model trainI trainL)
+    trainedMod <- (train 1000 model trainI trainL)
     
     let vectorExample = getX testI 5
 

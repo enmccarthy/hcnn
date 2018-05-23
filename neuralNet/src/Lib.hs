@@ -138,6 +138,7 @@ zipMult a b = (a * b)
 -- backwards prop
 --the derivative of cross entropy
 -- takes in the y vector and the output vector
+--CHECKED
 derCE :: [Float] -> [Float] -> [Float]
 derCE yvec outvec = (map (* (-1)) (zipWith zipAdd
                       (zipWith zipMult yvec (map (1/) outvec))
@@ -149,6 +150,7 @@ zipAdd a b = (a + b)
 
 -- dervative of each output with respect to their input
 -- takes in the input to the output nodes
+-- CHECKED
 derOut :: [Float] -> [Float]
 derOut inp = (map (/(inpSum^2))
                 (map (\x ->(exp x) *(inpSum - (exp x))) inp))

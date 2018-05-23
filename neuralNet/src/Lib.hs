@@ -1,7 +1,7 @@
 module Lib where
 
 import qualified Numeric.LinearAlgebra as NL
-import qualified Data.Vector as DV
+-- import qualified Data.Vector as DV
 import System.Random
 import Data.Functor
 import Control.Monad
@@ -21,11 +21,11 @@ mse newy oldy =  (((sum [(i-j) | i <- oldy,
 -- following https://deepnotes.io/softmax-crossentropy
 --softmax
 
-softmax :: (DV.Vector Float) -> (DV.Vector Float)
+softmax :: [Float] ->  [Float]
 softmax x =
-    (DV.map (/(DV.sum toX)) toX)
+    (map (/(sum toX)) toX)
 
-    where toX = (DV.map exp (DV.map (subtract (DV.maximum x)) x))
+    where toX = (map exp (map (subtract (maximum x)) x))
 
 
 --cross entropy loss
@@ -34,14 +34,14 @@ softmax x =
 -- y is labels (num_examples x 1)
 --CHECK THIS becuase I think I have confused myself with x/y and where softmax
 -- should be applied, I actually think on y now
-cel :: [DV.Vector Float] -> DV.Vector Float -> [Float]
+cel :: [[Float]] -> [Float] -> [Float]
 cel x y = map (\(a,b) -> a/ b )
   (zipWith zipIntTuple
-    (map (DV.sum)
-      (map (DV.map (\(yi,xi) -> -yi*(log xi))) zip1))
+    (map (sum)
+      (map (map (\(yi,xi) -> -yi*(log xi))) zip1))
     len)
-    where zip1 = (map (DV.zipWith zipFloatTuple y) (map softmax x))
-          len  = (map (DV.length) x)
+    where zip1 = (map (zipWith zipFloatTuple y) (map softmax x))
+          len  = (map (length) x)
 
 -- telling how I want them zipped, idk what will happen if they are different size
 -- so if I have issues come back and look at this
@@ -58,9 +58,9 @@ relu = max 0
 type InputLayers = [Layer]
 -- I need to keep track of the nodes in the previous layer
 -- There is probably a better way to do this
-type Model = [(Int, (IO Float, IO[(DV.Vector Float)]))]
+type Model = [(Int, (IO Float, IO[[Float]]))]
 
-type Error = [((DV.Vector Float), (DV.Vector Float))]
+type Error = [([Float], [Float])]
 
 -- I make the assumption that input comes first and
 -- output comes last but maybe I want to put a check somewhere
@@ -90,41 +90,46 @@ initModel wholemod@((num, (b, w)):ms) (ls:lay) =
 -- possibly a more efficient way to do this--
 -- but wanted to make sure it gives different ran numbers
 -- I need to check that it does
-createW :: Int -> Int -> IO[(DV.Vector Float)]
+createW :: Int -> Int -> IO[[Float]]
 createW num num2 = (replicateM num (createWHelp num2))
 
-createWHelp :: Int -> IO(DV.Vector Float)
+createWHelp :: Int -> IO [Float]
 createWHelp num = do
-    listRan <- (replicateM num (gauss (0.01)))
-    return (DV.fromList listRan)
+    -- listRan <- (replicateM num (gauss (0.01)))
+    (replicateM num (gauss (0.01)))
 
 
 -- forward prop
 
-forwardprop :: Model -> ((DV.Vector Float), Error)
-                        -> IO((DV.Vector Float), Error)
+forwardprop :: Model -> ([Float], Error)
+                        -> IO([Float], Error)
 forwardprop [] (vec, err) = return (vec, err)
 forwardprop ((_, (b, w)):[]) (vec, err) = do
     weight <- w
     bias <- b
-    let output = (softmax (DV.fromList
+    let output = (softmax 
                     (map (+ bias)
-                    (map (DV.foldl1 (+))
-                    (map (DV.zipWith zipMult vec)
+                    (map (foldl1 (+))
+                    (multWeight (zipMultWeight vec
                     weight)))))
     return (output, ([(vec, output)] ++ err))
 
 forwardprop ((_, (b, w)):ms) (vec, err) = do
     weight <- w
     bias <- b
-    let output = (DV.fromList
-                    (map relu
+    let output = (map relu
                     (map (+ bias)
-                    (map (DV.foldl1 (+))
-                    (map (DV.zipWith zipMult vec)
+                    (map (foldl1 (+))
+                    (multWeight (zipMultWeight vec 
                         weight)))))
     (forwardprop ms (output, ((vec, output):err)))
 
+zipMultWeight :: [Float] -> [[Float]] -> [([Float],[Float])]
+zipMultWeight a [] = []
+zipMultWeight a (b:bs) = [(a,b)] ++ (zipMultWeight a bs)
+
+multWeight [] = []
+multWeight ((a,b):rs) = [(zipWith zipMult a b)] ++ (multWeight rs)
 
 zipMult :: Float -> Float -> Float
 zipMult a b = (a * b)
@@ -133,25 +138,25 @@ zipMult a b = (a * b)
 -- backwards prop
 --the derivative of cross entropy
 -- takes in the y vector and the output vector
-derCE :: (DV.Vector Float) -> (DV.Vector Float) -> (DV.Vector Float)
-derCE yvec outvec = (DV.zipWith zipAdd
-                      (DV.map (subtract 1) (DV.zipWith zipMult yvec outvec))
-                      (DV.zipWith zipMult (DV.map (\x -> 1.0 - x) yvec)
-                            (DV.map (1.0/) (DV.map (\x -> 1.0 - x) outvec))))
+derCE :: [Float] -> [Float] -> [Float]
+derCE yvec outvec = (map (* (-1)) (zipWith zipAdd
+                      (zipWith zipMult yvec (map (1/) outvec))
+                      (zipWith zipMult (map (\x1 -> 1.0 - x1) yvec)
+                            (map (1.0/) (map (\x -> 1.0 - x) outvec)))))
 
 zipAdd :: Float -> Float -> Float
 zipAdd a b = (a + b)
 
 -- dervative of each output with respect to their input
 -- takes in the input to the output nodes
-derOut :: (DV.Vector Float) -> (DV.Vector Float)
-derOut inp = (DV.map (/(inpSum^2))
-                (DV.map (\x ->(exp x) *(inpSum - (exp x))) inp))
-    where inpSum = (DV.sum (DV.map exp inp))
+derOut :: [Float] -> [Float]
+derOut inp = (map (/(inpSum^2))
+                (map (\x ->(exp x) *(inpSum - (exp x))) inp))
+    where inpSum = (sum (map exp inp))
 
 -- takes relu values
-derRelu :: (DV.Vector Float) -> (DV.Vector Float)
-derRelu inp = (DV.map (\x -> if (x > 0) then 1 else 0) inp)
+derRelu :: [Float] -> [Float]
+derRelu inp = (map (\x -> if (x > 0) then 1 else 0) inp)
 
 
 -- last layer to output--
@@ -162,16 +167,16 @@ derRelu inp = (DV.map (\x -> if (x > 0) then 1 else 0) inp)
 -- TAKES A REVERSE MODEL/ERROR
 -- takes the y of the output of the model and the expected y
 -- TODO: I think the errors are in the wrong order
-backwardsprop :: Model -> (DV.Vector Float)
-                          -> (DV.Vector Float) -> Error -> IO Model
+backwardsprop :: Model -> [Float]
+                          -> [Float] -> Error -> IO Model
 backwardsprop ((i, (b, w)):ms) out
   expout err@((beforeSM, afterSM):(beforeWeights, afterWeights):re) = do
       weight <- w
       let dce = (derCE expout out) --(vector)
       let dout = (derOut afterWeights) --(vector)
-      let changeWeight = (DV.map (* 0.10)
-                            (DV.zipWith3 zipMult2 dce dout beforeWeights))
-      let newWeight = return (map (DV.zipWith zipSub changeWeight) weight)
+      let changeWeight = (map (* 0.10)
+                            (zipWith3 zipMult2 dce dout beforeWeights))
+      let newWeight = return (map (zipWith zipSub changeWeight) weight)
       otherMod <- (backprophelp ms dce dout weight err)
       -- new output layer weights
       return ((i, (b, newWeight)):otherMod)
@@ -186,14 +191,14 @@ backwardsprop ((i, (b, w)):ms) out
 -- this is also good for testing, right now it is this way because of
 -- dealing with the I/O
 
-backprophelp :: Model -> (DV.Vector Float) -> (DV.Vector Float)
-                    -> [(DV.Vector Float)] -> Error -> IO Model
+backprophelp :: Model -> [Float] ->  [Float]
+                    -> [ [Float]] -> Error -> IO Model
 backprophelp ((i, (b, w)):[]) d1 d2 weigh
   ((h2input, h2output):(h1input, h1output):re) = do
       currWeight <- w
-      let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh) --[vector]
-      let weightChange = (map (DV.map (* 0.10))
-                            (map (DV.zipWith3 zipMult2
+      let thirdValue = (map (zipWith3 zipMult2 d1 d2) weigh) --[vector]
+      let weightChange = (map (map (* 0.10))
+                            (map (zipWith3 zipMult2
                                       (derRelu h2input) h1output) thirdValue))
       let newWeight = return (zipWith zipVecSub weightChange currWeight)
       return [(i, (b, newWeight))]
@@ -201,18 +206,18 @@ backprophelp ((i, (b, w)):[]) d1 d2 weigh
 backprophelp ((i, (b, w)):ms) d1 d2 weigh
   ((h2input, h2output):(h1input, h1output):re) = do
       currWeight <- w
-      let thirdValue = (map (DV.zipWith3 zipMult2 d1 d2) weigh)
-      let weightChange = (map (DV.map (* 0.10))
-                          (map (DV.zipWith3 zipMult2
+      let thirdValue = (map (zipWith3 zipMult2 d1 d2) weigh)
+      let weightChange = (map (map (* 0.10))
+                          (map (zipWith3 zipMult2
                               (derRelu h2input) h1output) thirdValue))
       let newWeight = return (zipWith zipVecSub weightChange currWeight)
       otherMod <- (backprophelp1 ms (derRelu h2input)
                     thirdValue currWeight ((h1input, h1output):re))
-      return ([(i, (b, newWeight))] ++ otherMod)
+      return ((i, (b, newWeight)):otherMod)
 
 
-backprophelp1 :: Model -> (DV.Vector Float) -> [(DV.Vector Float)]
-                      -> [(DV.Vector Float)] -> Error -> IO Model
+backprophelp1 :: Model ->  [Float] -> [ [Float]]
+                      -> [ [Float]] -> Error -> IO Model
 backprophelp1 [] d1 d2 weigh _ = do
     return []
 
@@ -222,10 +227,10 @@ backprophelp1 ((i, (b, w)):[]) d1 d2 weigh _ = do
 backprophelp1 ((i, (b, w)):(i1, (b1, w1)):[]) d1 d2 weigh
   ((h2input, h2output):(h1input, h1output):re) = do
       currWeight <- w
-      let maper = (map (DV.zipWith zipMult d1) d2)
+      let maper = (map (zipWith zipMult d1) d2)
       let thirdValue = (zipWith zipVec maper weigh)
-      let weightChange = (map (DV.map (* 0.10))
-                              (map (DV.zipWith3 zipMult2
+      let weightChange = (map (map (* 0.10))
+                              (map (zipWith3 zipMult2
                                   (derRelu h2input) h1output) thirdValue))
       let newWeight = return (zipWith zipVecSub weightChange currWeight)
       return [(i, (b, newWeight))]
@@ -234,22 +239,22 @@ backprophelp1 ((i, (b, w)):ms) d1 d2 weigh
   ((h2input, h2output):(h1input, h1output):re) = do
       currWeight <- w
       let dRelu = (derRelu h2input)
-      let maper = (map (DV.zipWith zipMult d1) d2)
+      let maper = (map (zipWith zipMult d1) d2)
       let thirdValue = (zipWith zipVec maper weigh)
-      let weightChange = (map (DV.map (* 0.10))
-                              (map (DV.zipWith3 zipMult2
+      let weightChange = (map (map (* 0.10))
+                              (map (zipWith3 zipMult2
                                 dRelu h1output) thirdValue))
       let newWeight = return (zipWith zipVecSub weightChange currWeight)
       otherMod <- (backprophelp1 ms dRelu
                     thirdValue currWeight ((h1input, h1output):re))
-      return ([(i, (b, newWeight))] ++ otherMod)
+      return ((i, (b, newWeight)):otherMod)
 
 --look to see where this is used and change it
-zipVec :: (DV.Vector Float) -> (DV.Vector Float) -> (DV.Vector Float)
-zipVec a b = DV.zipWith zipMult a b
+zipVec ::  [Float] ->  [Float] ->  [Float]
+zipVec a b = zipWith zipMult a b
 
-zipVecSub :: (DV.Vector Float) -> (DV.Vector Float) -> (DV.Vector Float)
-zipVecSub a b = DV.zipWith zipSub a b
+zipVecSub ::  [Float] ->  [Float] ->  [Float]
+zipVecSub a b = zipWith zipSub a b
 
 zipMult2 :: Float -> Float -> Float -> Float
 zipMult2 a b c= (a * b * c)

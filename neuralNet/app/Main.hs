@@ -36,6 +36,27 @@ train iter model trainI trainL = do
     newMod <- (backwardsprop (reverse model) vec vectorAns (reverse err))
     train (iter-1) (reverse newMod) trainI trainL
 
+test 0 model testI testL correct total = do
+    let vectorExample = getX testI 0
+    let vectorAns = getY testL 0
+    (vector, error) <- (forwardprop model (vectorExample, []))
+    let newtotal = (total+1)
+    if ((elemIndex (maximum vector) vector) == (elemIndex (maximum vectorAns) vectorAns))
+        then return ((correct+1)/newtotal)
+        else return (correct/newtotal)
+    
+test iter model testI testL correct total = do
+    let vectorExample = getX testI iter
+    let vectorAns = getY testL iter
+    (vector, error) <- (forwardprop model (vectorExample, []))
+    let newtotal = (total+1)
+    if ((elemIndex (maximum vector) vector) == (elemIndex (maximum vectorAns) vectorAns)) 
+        then test (iter-1) model testI testL (correct+1) newtotal
+        else test (iter-1) model testI testL correct newtotal
+    
+
+
+
 main :: IO ()
 main = do
     -- these came from https://crypto.stanford.edu/~blynn/haskell/brain.html
@@ -47,25 +68,20 @@ main = do
 
     let (m:model) = (createMod [(Input 784), (Hidden 200), (Output 10)] [(0, ((return 0.01), (return [])))])
     -- let testmod = [(2, (1.0), return [[4.0, 3.0], [4.0, 3.0]])), (2, ((return 1.0), return [[2.0, 3.0], [2.0, 3.0]]))]
-    trainedMod <- (train 1000 model trainI trainL)
-    
-    let vectorExample = getX testI 5
-
-    let vectorAns = getY testL 5
-
-
+    trainedMod <- (train 10000 model trainI trainL)
+    let vectorExample = getX testI 1
+    let vectorAns = getY testL 1
     let testVector = [2.0, 1.0]
     (vec, err) <- (forwardprop trainedMod (vectorExample, []))
-    (print vec)
+    -- (print vec)
     -- (print err)
-
-
     --(vector2, err) <- (forwardprop model (vectorExample, []))
     (vector, error) <- (forwardprop model (vectorExample, []))
     -- (print vector2)
-    (print vector) 
-    -- (print (elemIndex (max vector) vector))
+    -- (print vectorAns) 
+    total <- (test 9999 trainedMod testI testL 0 0)
+    (print total)
     --(print err)
     -- (print (cel [vector] vectorAns))
-    -- (print (elemIndex (max vectorAns) vectorAns))
+    -- (print (elemIndex (maximum vectorAns) vectorAns))
     return ()

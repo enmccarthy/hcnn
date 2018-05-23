@@ -107,21 +107,20 @@ forwardprop [] (vec, err) = return (vec, err)
 forwardprop ((_, (b, w)):[]) (vec, err) = do
     weight <- w
     bias <- b
-    let output = (softmax
-                    (map (+ bias)
+    let output = (map (+ bias)
                     (map (foldl1 (+))
                     (multWeight (zipMultWeight vec
-                    weight)))))
-    return (output, ([(vec, output)] ++ err))
+                    weight))))
+    return ((softmax output), ([(output, (softmax output))] ++ err))
 
 forwardprop ((_, (b, w)):ms) (vec, err) = do
     weight <- w
     bias <- b
     let output = (map (+ bias)
                     (map (foldl1 (+))
-                    (multWeight (zipMultWeight (map relu vec)
+                    (multWeight (zipMultWeight vec
                         weight))))
-    (forwardprop ms (output, ((vec, (map relu vec)):err)))
+    (forwardprop ms ((map relu output), ((output, (map relu output)):err)))
 
 zipMultWeight :: [Float] -> [[Float]] -> [([Float],[Float])]
 zipMultWeight a [] = []
@@ -174,9 +173,9 @@ backwardsprop ((i, (b, w)):ms) out
   expout err@((beforeSM, afterSM):(beforeRelu, afterRelu):re) = do
       weight <- w
       let dce = (derCE expout out) --(vector)
-      let dout = (derOut afterRelu) --(vector)
+      let dout = (derOut beforeSM) --(vector)
       let changeWeight = (map (* 0.10)
-                            (zipWith3 zipMult2 dce dout beforeRelu))
+                            (zipWith3 zipMult2 dce dout afterRelu))
       let newWeight = return (map (zipWith zipSub changeWeight) weight)
       otherMod <- (backprophelp ms dce dout weight err)
       -- new output layer weights

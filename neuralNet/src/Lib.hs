@@ -7,6 +7,8 @@ import Data.Functor
 import Control.Monad
 import Data.Ord
 import Data.List
+import Control.Parallel (par)
+import Control.Parallel.Strategies (Strategy, parMap, parList, rseq, rdeepseq)
 
 
 data Layer = Input Int
@@ -25,10 +27,11 @@ mse newy oldy =  (((sum [(i-j) | i <- oldy,
 
 softmax :: [Float] ->  [Float]
 softmax x =
-    (map (/(summation)) toX)
-    where 
-        toX = (map exp (map (subtract (maximum x)) x))
-        summation = (sum (map exp (map (subtract (maximum x)) x)))
+    let maxX = (maximum x) in 
+        (map (/(summation)) toX)
+        where 
+            toX = (map exp (map (subtract maxX) x))
+            summation = (sum (map exp (map (subtract maxX) x)))
 
 
 --cross entropy loss

@@ -27,6 +27,7 @@ dependencies:
 - zlib
 - bytestring
 - hspec
+- parallel 
 
 
 library:

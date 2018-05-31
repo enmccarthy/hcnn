@@ -26,44 +26,44 @@ getY     s n = fromIntegral . fromEnum . (getLabel s n ==) <$> [0..9]
 -- train the model with given test sets -- 
 -- takes in a number of iterations a model and the training set and solutions
 -- train :: Int -> [([Float], [[Float]])] -> BS.ByteString -> BS.ByteString -> [([Float], [[Float]])] 
--- train 1 model trainSet trainKey = 
---     let 
---         vectorExample = (getX trainSet 1)
---         vectorAns     = (getY trainKey 1)
---         (vec, err)    = (forwardprop model (vectorExample, [])) in
---     (backwardsprop (reverse model) vec vectorAns (reverse err))
+train 1 model trainSet trainKey = 
+    let 
+        vectorExample = (getX trainSet 1)
+        vectorAns     = (getY trainKey 1)
+        (vec, err)    = (forwardprop model (vectorExample, [])) in
+    (backwardspropV2 (reverse model) (0.002) vectorAns err)
 
--- train iter model trainSet trainKey =
---     let 
---         vectorExample = (getX trainSet iter)
---         vectorAns     = (getY trainKey iter)
---         (vec, err)    = (forwardprop model (vectorExample, []))
---         newMod        = (backwardsprop (reverse model) vec vectorAns (reverse err)) in
---     -- must reverse becasue backprop is backwards
---     train (iter-1) (reverse newMod) trainSet trainKey
+train iter model trainSet trainKey =
+    let 
+        vectorExample = (getX trainSet iter)
+        vectorAns     = (getY trainKey iter)
+        (vec, err)    = (forwardprop model (vectorExample, []))
+        newMod        = (backwardspropV2 (reverse model) (0.002) vectorAns err) in
+    -- must reverse becasue backprop is backwards
+    train (iter-1) (reverse newMod) trainSet trainKey
 
 -- test :: Int -> [([Float], [[Float]])] -> BS.ByteString -> BS.ByteString -> IO([([Float], [Integer])]) 
--- test 0 model testSet testKey = do
---     n <- (`mod` 1000) <$> randomIO
---     let vectorExample = getX testSet n
---     let vectorAns = getY testKey n 
---     let (vector, error) = (forwardprop model (vectorExample, []))
---     return ([(vector, vectorAns)])
---     -- let newtotal = (total+1)
+test 0 model testSet testKey = do
+    n <- (`mod` 1000) <$> randomIO
+    let vectorExample = getX testSet n
+    let vectorAns = getY testKey n 
+    let (vector, error) = (forwardprop model (vectorExample, []))
+    return ([(vector, vectorAns)])
+    -- let newtotal = (total+1)
 
---     -- if ((elemIndex (maximum vector) vector) == (elemIndex (maximum vectorAns) vectorAns))
---     --     then return ((correct+1)/newtotal)
---     --     else return (correct/newtotal)
+    -- if ((elemIndex (maximum vector) vector) == (elemIndex (maximum vectorAns) vectorAns))
+    --     then return ((correct+1)/newtotal)
+    --     else return (correct/newtotal)
     
--- test iter model testSet testKey = do
---     n <- (`mod` 1000) <$> randomIO
---     let vectorExample = getX testSet n
---     let vectorAns = getY testKey n
---     let (vector, error) = (forwardprop model (vectorExample, []))
+test iter model testSet testKey = do
+    n <- (`mod` 1000) <$> randomIO
+    let vectorExample = getX testSet n
+    let vectorAns = getY testKey n
+    let (vector, error) = (forwardprop model (vectorExample, []))
 
---     restofTest <- (test (iter-1) model testSet testKey)
---     --returning the vector output and the answer
---     return((vector, vectorAns):restofTest)
+    restofTest <- (test (iter-1) model testSet testKey)
+    --returning the vector output and the answer
+    return ((vector, vectorAns):restofTest)
     -- (print vectorAns)
     -- if ((elemIndex (maximum vector) vector) == (elemIndex (maximum vectorAns) vectorAns)) 
     --     then test (iter-1) model testSet testKey (correct+1) newtotal 
@@ -79,12 +79,21 @@ convertMod ((i,(b,w)):rm) = do
     weight <- w
     restMod <- (convertMod rm)
     return ((bias, weight):restMod)
+computeTotal :: [([Double],[Double])] -> Double
+computeTotal [] = 0.0
+computeTotal ((guess, actual):xs) = if (elemIndex (maximum guess) guess) == (elemIndex (maximum actual) actual) 
+                                    then
+                                        1 + (computeTotal xs)
+                                    else
+                                        (computeTotal xs)
 
 render n = let s = " .:oO@" in s !! (fromIntegral n * length s `div` 256)
 
 main :: IO ()
 main = do
-    -- these came from https://crypto.stanford.edu/~blynn/haskell/brain.html
+    -- almost this whole main came from https://crypto.stanford.edu/~blynn/haskell/brain.html 
+    -- I wrote my own functions/main that test and train the neural net (what is left of it is above and in the comments below) 
+    --but this is 11/10 prettier and way easier for debugging 
     [trainI, trainL, testI, testL] <- mapM ((decompress  <$>) . BS.readFile) [ "./src/train-images-idx3-ubyte.gz"
         , "./src/train-labels-idx1-ubyte.gz"
         ,  "./src/t10k-images-idx3-ubyte.gz"
@@ -92,7 +101,7 @@ main = do
         ]
     -- create model and remove the first layer because it is not necessary --
     let (m:model) = (createMod [(Input 784), (Hidden 30), (Output 10)] [(0, ((return [0.01]), (return [])))])
-    -- changed formats half way through -- 
+
     b <- (convertMod model)
     n <- (`mod` 10000) <$> randomIO
     putStr . unlines $
@@ -115,24 +124,21 @@ main = do
 
     let guesses = bestOf . (\n -> feed (getX testI n) smart) <$> [0..9999]
     let answers = getLabel testL <$> [0..9999]
-    -- train the model --
-    -- let vectorExample = getX trainI 1
-    -- let vectorAns = getY trainL 2
-    -- let vectorExample2 = getX trainI 2
-    -- let vectorExample3 = getX trainI 3
-    -- let (vec, err) = (forwardprop otherFormat (vectorExample, []))
-    -- let (t:tmod) = (backwardsprop (reverse otherFormat) vec vectorAns (reverse err))
-    -- let trainedMod = (train 100 otherFormat trainI trainL)
-    --     newtrainedMod = trainedMod
-    -- -- testing the model -- 
-    -- let newtmod = (reverse tmod)
-    -- print (t)
-    -- print (vec)
-    -- let (vec2, err2) = (forwardprop (newtmod) (vectorExample2, []))
-    -- let (vec3, err3) = (forwardprop (reverse tmod) (vectorExample3, []))
-    -- (print vec2)
-    -- (print vec3)
-    -- total <- (test 3 newtrainedMod trainI trainL)
-    -- (print total)
+
+    putStrLn $ show (sum $ fromEnum <$> zipWith (==) guesses answers) ++
+        " / 10000"
+   -- train the model --
+    let 
+        -- vectorExample = getX trainI 1
+        -- vectorAns = getY trainL 2
+        -- vectorExample2 = getX trainI 2
+        -- vectorExample3 = getX trainI 3
+        -- (vec, err) = (forwardprop b2 (vectorExample, []))
+        -- tmod = (backwardsprop (reverse b2) (0.002) vectorAns err)
+    --     trainedMod = (train 1000 b2 trainI trainL)
+    -- ansList <- (test 1000 (reverse trainedMod) testI testL)
+    -- let tot = computeTotal ansList
+    -- print (tot/1000.0) 
+        
 
     return ()

@@ -7,8 +7,8 @@ import Data.Functor
 import Control.Monad
 import Data.Ord
 import Data.List
-import Control.Parallel (par)
-import Control.Parallel.Strategies (Strategy, parMap, parList, rseq, rdeepseq)
+import Control.Parallel (par, pseq)
+import Control.Parallel.Strategies (Strategy, parMap, parList, rseq, rdeepseq, using, evalList)
 
 
 data Layer = Input Int
@@ -16,22 +16,17 @@ data Layer = Input Int
     | Hidden Int
 
 --Loss Functions
---Mean squared error
-mse :: [Float] -> [Float] -> Float
-mse newy oldy =  (((sum [(i-j) | i <- oldy,
-                               j <- newy])**2)/ len)
-    where len = fromIntegral(length newy)
 
 -- following https://deepnotes.io/softmax-crossentropy
 --softmax
 
-softmax :: [Float] ->  [Float]
+softmax :: [Double] ->  [Double]
 softmax x =
-    let maxX = (maximum x) in 
-        (map (/(summation)) toX)
-        where 
-            toX = (map exp (map (subtract maxX) x))
-            summation = (sum (map exp (map (subtract maxX) x)))
+    (parMap rdeepseq (/(summation)) toX)
+    where 
+        maxX = (maximum x)
+        toX = (parMap rdeepseq exp (parMap rdeepseq (subtract maxX) x))
+        summation = (sum (parMap rdeepseq exp (parMap rdeepseq (subtract maxX) x)))
 
 
 --cross entropy loss
@@ -40,42 +35,43 @@ softmax x =
 -- y is labels (num_examples x 1)
 --CHECK THIS becuase I think I have confused myself with x/y and where softmax
 -- should be applied, I actually think on y now
-cel :: [[Float]] -> [Float] -> [Float]
-cel x y = map (\(a,b) -> a/ b )
+cel :: [[Double]] -> [Double] -> [Double]
+cel x y = parMap rdeepseq (\(a,b) -> a/ b )
   (zipWith zipIntTuple
-    (map (sum)
-      (map (map (\(yi,xi) -> -yi*(log xi))) zip1))
+    (parMap rdeepseq (sum)
+      (parMap rdeepseq (parMap rdeepseq(\(yi,xi) -> -yi*(log xi))) zip1))
     len)
-    where zip1 = (map (zipWith zipFloatTuple y) (map softmax x))
-          len  = (map (length) x)
+    where zip1 = (parMap rdeepseq (zipWith zipDoubleTuple y) (parMap rdeepseq softmax x))
+          len  = (parMap rdeepseq (length) x)
 
 -- telling how I want them zipped, idk what will happen if they are different size
 -- so if I have issues come back and look at this
-zipFloatTuple :: Float -> Float -> (Float, Float)
-zipFloatTuple a b = (a , b)
+zipDoubleTuple :: Double -> Double -> (Double, Double)
+zipDoubleTuple a b = (a , b)
 
-zipIntTuple :: Float -> Int -> (Float, Float)
+zipIntTuple :: Double -> Int -> (Double, Double)
 zipIntTuple a b = (a , (fromIntegral b))
 -- activation functions --
--- relu (boring)
-relu :: Float -> Float
+-- relu, I didnt end up using this tho
+relu :: Double -> Double
 relu = max 0
 
+-- log activation function that I used bc the partial derivate made more sense
+logAct f1 = (1/(1+ exp(-f1))) 
+
 type InputLayers = [Layer]
--- I need to keep track of the nodes in the previous layer
+-- I need to keep track of the number nodes in the previous layer (which is why int is there)
 -- There is probably a better way to do this
-type Model = [(Int, (IO [Float], IO[[Float]]))]
+-- I end up converting the model to not have the int once it is created (see Main)
+type Model = [(Int, (IO [Double], IO[[Double]]))]
+-- need to keep track of weighted input and activation
+type Error = [([Double], [Double])]
 
-type Error = [([Float], [Float])]
-
--- I make the assumption that input comes first and
--- output comes last but maybe I want to put a check somewhere
--- for that
 
 -- takes a standard dev as input
--- grabbed from the internet
+-- grabbed from the internet 
 -- this is boxmuller
-gauss :: Float -> IO Float
+gauss :: Double -> IO Double
 gauss scale = do
     x1 <- randomIO
     x2 <- randomIO
@@ -96,150 +92,159 @@ initModel wholemod@((num, (b, w)):ms) (ls:lay) =
 -- possibly a more efficient way to do this--
 -- but wanted to make sure it gives different ran numbers
 -- I need to check that it does
-createB :: Int -> IO[Float]
+createB :: Int -> IO[Double]
 createB bin = return (replicate bin 1.0)
-createW :: Int -> Int -> IO[[Float]]
+createW :: Int -> Int -> IO[[Double]]
 createW num num2 = (replicateM num (createWHelp num2))
 
-createWHelp :: Int -> IO [Float]
+createWHelp :: Int -> IO [Double]
 createWHelp num = (replicateM num (gauss (0.01)))
 
 
 -- forward prop
-
-forwardprop :: ([([Float], [[Float]])]) -> ([Float], Error)
-                        -> ([Float], Error)
-forwardprop [] (vec, err) = (vec, err)
-forwardprop ((bias, weight):[]) (vec, err) =
-    let output = (zipWith (+) bias
-                    (map (foldl1 (+))
-                    (multWeight (zipMultWeight vec
-                    weight)))) in 
+-- multiply the weight by the vector
+-- each [] in weight represents all the weights for the input to
+-- one node
+forwardMult :: [Double] -> ([Double], [[Double]]) -> [Double]
+forwardMult inputVector (bias, weights) = 
+    (zipWith (+) bias
+        (parMap rdeepseq (foldl1 (+))
+        (zipMultWeight inputVector
+            weights `using` parList rdeepseq)))
+-- I wanted to use scanl here but could not figure out a way to calculate the error
+-- without recalculating
+forwardprop :: ([([Double], [[Double]])]) -> ([Double], Error)
+                        -> ([Double], Error)
+forwardprop (model:[]) (vec, err) =
+    let output = forwardMult vec model  in 
     ((softmax output), ([(output, (softmax output))] ++ err))
 
-forwardprop ((bias, weight):ms) (vec, err) =
+forwardprop (model:ms) (vec, err) =
     let 
-        output = (zipWith (+) bias
-                    (map (foldl1 (+))
-                    (multWeight (zipMultWeight vec
-                        weight)))) 
-        newerror = if (err == []) then ((output, (map relu output)):[(vec, vec)])
-                    else ((output, (map relu output)):err) in 
-    (forwardprop ms ((map relu output), newerror))
-
--- multiplying the first of every list together -- 
-zipMultWeight :: [Float] -> [[Float]] -> [([Float],[Float])]
+        output = forwardMult vec model
+        newerror = if (err == []) then ((output, (parMap rdeepseq logAct output)):[(vec, vec)])
+                    else ((output, (parMap rdeepseq logAct output)):err) in 
+    (forwardprop ms ((parMap rdeepseq logAct output), newerror))
+-- these all had zip in the name bc once upon a time I was using them with zip
+-- but things spiraled and I havent changed the names
+-- multiplying vector and matrix without transposing -- 
+zipMultWeight :: [Double] -> [[Double]] -> [[Double]]
 zipMultWeight a [] = []
-zipMultWeight a (b:bs) = [(a,b)] ++ (zipMultWeight a bs)
+zipMultWeight a (b:bs) = [(zipWith (*) a b)] ++ (zipMultWeight a bs)
 
-multWeight [] = []
-multWeight ((a,b):rs) = [(zipWith (*) a b)] ++ (multWeight rs)
+--take a matrix and condense add together
+zipAddWeight :: [[Double]] -> [Double]
+zipAddWeight (a:as) = (zipAddWeighth a as) 
 
-zipMult :: Float -> Float -> Float
-zipMult a b = (a * b)
-
-
--- backwards prop
---the derivative of cross entropy
--- takes in the y vector and the output vector
--- if statements so that it doesnt return nAn 
-derCE :: [Float] -> [Float] -> [Float]
-derCE yvec outvec = (map (* (-1)) (zipWith zipAdd
-                      (zipWith zipMult yvec (map (1/) (map (\x3 -> if x3 == 0 then 0.0000001 else x3) outvec)))
-                      (zipWith zipMult (map (\x1 -> 1.0 - x1) yvec)
-                            (map (1.0/) (map (\x -> 1.0 - x) (map (\x2 -> if x2 == 1 then 1.0000001 else x2)outvec))))))
-
-zipAdd :: Float -> Float -> Float
-zipAdd a b = (a + b)
-
--- dervative of each output with respect to their input
--- takes in the input to the output nodes
--- CHECKED
-derOut :: [Float] -> [Float]
-derOut inp = (map (/(inpSum^2))
-                (map (\x ->(exp x) *(inpSum - (exp x))) inp))
-    where inpSum = (sum (map exp inp))
-
--- takes relu values
-derRelu :: [Float] -> [Float]
-derRelu inp = (map (\x -> if (x > 0) then 1 else 0) inp)
-
+zipAddWeighth :: [Double] -> [[Double]] -> [Double]
+zipAddWeighth a [] = a
+zipAddWeighth a (b:bs) = (zipAddWeighth (zipWith (+) a b `using` parList rdeepseq) bs)
 
 -- backwards prop
--- TAKES A REVERSE MODEL/ERROR
+-- TAKES A REVERSE MODEL
+
+-- this does the math that is located here https://www.ics.uci.edu/~pjsadows/notes.pdf
+
 -- takes the y of the output of the model and the expected y
+-- takes in vector of input 
+--version2 not reusing stuff bc debugging but realistically v1000000
+-- this is from the output layer to the first hidden layer
+-- (output - expected output) * hiOutput (input to previous layer after activation)
+backwardspropV2 :: [([Double], [[Double]])] -> Double
+                        -> [Double] -> Error -> [([Double], [[Double]])]
+backwardspropV2 ((bias, weight):ms) learnRate
+  expout er@((beforeSM, output):(hiInput, hiOutput):re) =
+    --calculate total error (actual - expected)
+    let
+        totalError  = zipWith (-) output expout
+        --previous output * current weights 
+        multW       = multHelp hiOutput totalError 
+        -- multiply by learning rate
+        learnWeight = parMap rdeepseq (parMap rdeepseq (*learnRate)) multW
+        --subtract from old weights
+        newWeights  = weightMatrix weight (transpose learnWeight)
+        --new bias -- 
+        newBias     = (zipWith (-) bias (parMap rdeepseq (*learnRate) totalError)) in
+    (newBias, newWeights):(bpV2Helper ms learnRate totalError weight ((hiInput, hiOutput):re))
 
-backwardsprop :: [([Float], [[Float]])] -> [Float]
-                          -> [Float] -> Error -> [([Float], [[Float]])]
-backwardsprop ((bias, weight):ms) output
-  expout ((beforeSM, afterSM):(beforeRelu, afterRelu):re) =
-      let 
-        dce          = (derCE expout output)
-        newbias      = (zipWith zipSub (map (*0.001) dce) bias)
-        dout         = (derOut beforeSM) 
-        changeWeight = (map (* 0.001)
-                            (zipWith3 zipMult2 dce dout afterRelu))
-        newWeight = (map (zipWith zipSub changeWeight) weight) in
-      -- new output layer weights
-      ((newbias, newWeight):(backprophelp ms dce dout weight ((beforeRelu, afterRelu):re)))
+multHelp [] err = []
+multHelp (h:hout) err = (map (*h) err):(multHelp hout err)
 
--- layer to layer
--- derRelu * h1 outvalue * (derCE * derOut * (weights on 2nd layer output))
+--matrix mult --
+mm2 [] [] = []
+mm2 (m:m1) (n:n2) = (zipWith (*) m n):(mm2 m1 n2)
 
---input to layer
---derRelu * input value out * (previous relu * previous 3rd value * weight coming into layer)
+-- for each input in the input vector multiply against loss matrix
+--  and then add down to a vetor creating a loss vector with respect to input
 
-condense :: [[Float]] -> [Float]
-condense (x:xs) = condenseHelp xs x
+--should this be zipAddWeight or should it be fold
+someBackPropMath :: [Double] -> [[Double]] -> [[Double]]
+someBackPropMath [] _        = []
+someBackPropMath (x:xs) matr = (zipAddWeight (parMap rdeepseq (map (* x)) matr)):(someBackPropMath xs matr)
 
-condenseHelp [] vec     = vec 
-condenseHelp (m:ms) vec = condenseHelp ms (zipWith (+) m vec) 
+bpV2Helper ((bias, weight):[]) learnRate
+  totErr prevWeight ((hiInput, hiOutput):(input, _):[]) =
+    let
+        -- hiOutput (1- hiOutput)
+        weightedOut    = zipWith (*) hiOutput (map (1-) hiOutput)
+        -- weightOut * totalErr should return a maxtrix the same dimensions as weights
+        multErr        = (multHelp totErr weightedOut)
+        --multErr summed down for bias
+        multBias      = zipAddWeight multErr
+        -- multiply two matrix same dimensions without transpose
+        prevWeighErr   = mm2 multErr prevWeight
+        -- multiply each input by the weightErr and then sum those down the columns
 
-backprophelp :: [([Float], [[Float]])] -> [Float] ->  [Float]
-                    -> [ [Float]] -> Error -> [([Float], [[Float]])]
+        -- do this for each input node
+        step3          = someBackPropMath input prevWeighErr 
+        -- mult by learnRate --
+        learnWeight    =  parMap rdeepseq (map (* learnRate)) step3
+        -- update weight
+        newWeight      = weightMatrix weight (transpose learnWeight)
 
-backprophelp ((bias, currWeight):[]) d1 d2 weigh
-  ((h2input, h2output):(h1input, h1output):re) =
-      let 
-        newbias     = (zipWith zipSub (map (*0.002) d1) bias) 
-        thirdValue  = (condense (map (zipWith (*) (zipWith (*) d1 d2)) weigh))
-        weightChange = (map (* 0.002)
-                            (zipWith3 zipMult2
-                                      (derRelu h2input) h1output thirdValue))
-        newWeight = (map (zipWith zipSub weightChange) currWeight) in
-      [(newbias, newWeight)]
+        newBias        = (zipWith (-) bias (parMap rdeepseq (*learnRate) multBias) ) in
+    [(newBias, newWeight)]  
 
-backprophelp ((bias, currWeight):ms) d1 d2 weigh
-  ((h2input, h2output):(h1input, h1output):re) =
-      let 
-        newbias      = (zipWith zipSub (map (*0.002) d1) bias)  
-        thirdValue   = (condense (map (zipWith3 zipMult2 d1 d2) weigh)) 
-        weightChange = (map (* 0.002)
-                          (zipWith3 (zipMult2)
-                              (derRelu h2input) h1output thirdValue))
-        newWeight    = (map (zipWith zipSub weightChange) currWeight)  in
-        ((newbias, newWeight):(backprophelp ms (derRelu h2input)
-                                thirdValue currWeight ((h1input, h1output):re)))
+    --modify this so for other layers --
+-- bpV2Helper ((bias, weight):ms) learnRate
+--     totErr prevWeight ((hiInput, hiOutput):(beforeAct, input):rs) =
+--       let
+--           -- hiOutput (1- hiOutput)
+--           weightedOut    = zipWith (*) hiOutput (map (1-) hiOutput)
+--           -- weightOut * totalErr should return a maxtrix the same dimensions as weights
+--           multErr        = (multHelp totErr weightedOut)
+--           --multErr summed down for bias
+--           multBias      = zipAddWeight multErr
+--           -- multiply two matrix same dimensions without transpose
+--           prevWeighErr   = mm2 multErr prevWeight
+--           -- multiply each input by the weightErr and then sum those down the columns
+  
+--           -- do this for each input node
+--           step3          = someBackPropMath input prevWeighErr 
+--           -- mult by learnRate --
+--           learnWeight    =  parMap rdeepseq (map (* learnRate)) step3
+--           -- update weight
+--           newWeight      = weightMatrix weight (transpose learnWeight)
+  
+--           newBias        = (zipWith (+) bias (parMap rdeepseq (*learnRate) multBias) ) in
+--       (newBias, newWeight):(bpV2Helper ms learnrate totErr weight (beforeAct, input):rs)  
+  
+--     (newBias, newWeight):(bpV2Helper ms learnRate addWeightToVec prevWeight ((hjInput, hjOutput):rs))
 
-
---look to see where this is used and change it
-zipVec ::  [Float] ->  [Float] ->  [Float]
-zipVec a b = zipWith zipMult a b
-
-zipVecSub ::  [Float] ->  [Float] ->  [Float]
-zipVecSub a b = zipWith zipSub a b
-
-zipMult2 :: Float -> Float -> Float -> Float
-zipMult2 a b c= (a * b * c)
-
-zipSub :: Float -> Float -> Float
-zipSub a b = (b - a)
+weightMatrix [] []             = []
+weightMatrix (m1:rm1) (m2:rm2) = (zipWith (-) m1 m2):(weightMatrix rm1 rm2)
 
 
+-- zipMultWeightErr [] []     = []                         
+-- zipMultWeightErr (a:ra) (b:rb) =  (zipWith (*) a b):(zipMultWeightErr ra rb)
+
+-- functions written to make my code compatible with 
+-- the main function I grabbed off the internet
 learn x y layers = 
     let
         (vec, err) = (forwardprop layers (x, [])) in 
-    (backwardsprop (reverse layers) vec y (reverse err))
+    (reverse (backwardspropV2 (reverse layers) (0.01) y err))
+
 
 feed vec layers = 
     let
